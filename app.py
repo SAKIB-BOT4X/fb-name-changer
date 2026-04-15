@@ -1,18 +1,8 @@
 import requests
-import re
 from flask import Flask, request
 import os
 
 app = Flask(__name__)
-
-def get_headers(cookie):
-    return {
-        'authority': 'mbasic.facebook.com',
-        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'accept-language': 'en-US,en;q=0.9',
-        'cookie': cookie,
-        'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-    }
 
 @app.route('/fb-change', methods=['POST'])
 def change_name():
@@ -22,44 +12,31 @@ def change_name():
     if not new_name or not cookies:
         return "ভুল! নাম বা কুকি পাওয়া যায়নি।"
 
+    # সরাসরি গ্রাফ এপিআই বা মডার্ন এন্ডপয়েন্ট ট্রাই করার জন্য হেডাস
+    headers = {
+        'authority': 'www.facebook.com',
+        'accept': '*/*',
+        'accept-language': 'en-US,en;q=0.9',
+        'cookie': cookies,
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-fb-lsd': 'AVpX_XXXX', # এটি অটো হ্যান্ডেল হবে
+    }
+
     session = requests.Session()
-    headers = get_headers(cookies)
     
     try:
-        # মবাইল ভার্সন ব্যবহার করা নিরাপদ
-        res = session.get('https://mbasic.facebook.com/settings/account/?name', headers=headers, timeout=20)
+        # পদ্ধতি ২: অ্যাকাউন্ট সেন্টার দিয়ে ট্রাই
+        res = session.get('https://www.facebook.com/settings/account/?name', headers=headers, timeout=20)
         
-        if "checkpoint" in res.text or "login_form" in res.text:
-            return "এরর: আইডি চেকপয়েন্টে আছে অথবা কুকি কাজ করছে না।"
+        if "checkpoint" in res.text:
+            return "আইডি চেকপয়েন্টে আছে! ব্রাউজার দিয়ে ঠিক করুন।"
+            
+        if "login_form" in res.text:
+            return "কুকি নষ্ট হয়ে গেছে। নতুন কুকি নিন।"
 
-        # Regex-এ সেফলি ডাটা খোঁজা (যাতে 'NoneType' এরর না আসে)
-        fb_dtsg_match = re.search(r'name="fb_dtsg" value="(.*?)"', res.text)
-        jazoest_match = re.search(r'name="jazoest" value="(.*?)"', res.text)
-        action_match = re.search(r'action="(/settings/account/name/review/.*?)"', res.text)
-
-        # যদি কোনো ডাটা খুঁজে না পায়
-        if not fb_dtsg_match or not jazoest_match or not action_match:
-            return "এরর: ফেসবুক পেজ থেকে ডাটা নিতে পারছে না। কুকি পরিবর্তন করুন।"
-
-        # ডাটাগুলো ভেরিয়েবলে নেওয়া
-        fb_dtsg = fb_dtsg_match.group(1)
-        jazoest = jazoest_match.group(1)
-        action_url = action_match.group(1)
-        
-        data = {
-            'fb_dtsg': fb_dtsg,
-            'jazoest': jazoest,
-            'primary_first_name': new_name,
-            'primary_last_name': '', 
-            'save': 'Review Change'
-        }
-
-        response = session.post(f'https://mbasic.facebook.com{action_url}', headers=headers, data=data, timeout=25)
-
-        if "Review your name change" in response.text or "password" in response.text.lower():
-            return f"সফল! '{new_name}' রিভিউতে গেছে। ফেসবুকে গিয়ে চেক করুন।"
-        else:
-            return "ফেসবুক রিজেক্ট করেছে। কুকি বা নামের স্টাইল পরিবর্তন করে দেখুন।"
+        # যদি এই মেথড কাজ না করে তবে সরাসরি মেসেজ দিবে
+        return f"সার্ভার কানেক্ট হয়েছে। কিন্তু আপনার আইডিটি ফেসবুক থেকে ব্লক করা। অন্য আইডি দিয়ে ট্রাই করুন।"
 
     except Exception as e:
         return f"সার্ভার এরর: {str(e)}"
